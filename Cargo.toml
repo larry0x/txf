@@ -1,0 +1,18 @@
+[package]
+name          = "txf"
+description   = "A library facilitating the signing and broadcasting of transactions on Cosmos SDK-based blockchains"
+version       = "0.0.0"
+edition       = "2021"
+rust-version  = "1.70.0"
+authors       = ["Larry Lyu <gm@larry.engineer>"]
+license       = "UNLICENSED"
+homepage      = "https://github.com/larry0x/txf"
+repository    = "https://github.com/larry0x/txf"
+documentation = "https://github.com/larry0x/txf#readme"
+keywords      = []
+
+[dependencies]
+cosmos-sdk-proto = { version = "0.19", features = ["grpc"] }
+thiserror        = "1"
+tokio            = { version = "1", features = ["full"] }
+tonic            = "0.9"
