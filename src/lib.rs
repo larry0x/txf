@@ -81,7 +81,7 @@ impl TxBuilder {
 
                 let coin = Coin {
                     denom:  gas_price.denom,
-                    amount: (gas_limit as f64 * gas_price_dec).floor().to_string(),
+                    amount: (gas_limit * gas_price_dec).floor().to_string(),
                 };
 
                 vec![coin]
@@ -217,12 +217,14 @@ async fn simulate_gas(grpc_url: String, body: TxBody) -> Result<u64> {
 
     tx::service_client::ServiceClient::connect(grpc_url)
         .await?
-        .simulate(tx::SimulateRequest {
-            // yeah i know this is deprecated
-            #[allow(clippy::deprecated)]
-            tx: None,
-            tx_bytes: sim_tx.to_bytes()?,
-        })
+        .simulate(
+            // yeah i know it's deprecated thank you
+            #[allow(deprecated)]
+            tx::SimulateRequest {
+                tx: None,
+                tx_bytes: sim_tx.to_bytes()?,
+            },
+        )
         .await?
         .into_inner()
         .gas_info
@@ -250,7 +252,7 @@ async fn query_account(grpc_url: String, address: String) -> Result<BaseAccount>
         .await?
         .into_inner()
         .account
-        .ok_or_else(|| Error::AccountNotFound {
+        .ok_or(Error::AccountNotFound {
             address,
         })?;
 
@@ -265,7 +267,7 @@ fn derive_pubkey(privkey: &ecdsa::SigningKey) -> Vec<u8> {
 }
 
 fn derive_address(pubkey_bytes: &[u8], bech_prefix: &str) -> Result<String> {
-    let addr_bytes = ripemd160(&sha256(&pubkey_bytes));
+    let addr_bytes = ripemd160(&sha256(pubkey_bytes));
 
     bech32::encode(bech_prefix, addr_bytes.to_base32(), Variant::Bech32).map_err(Into::into)
 }
