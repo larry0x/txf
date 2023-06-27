@@ -28,8 +28,7 @@ pub enum BuilderParams {
         bech_prefix:    String,
         gas_adjustment: u64,
     },
-
-    /// Offchain signing mode - the user must provide the chain-id, signer
+    /// Offline signing mode - the user must provide the chain-id, signer
     /// account info, and gas limit.
     Offline {
         chain_id:       String,
