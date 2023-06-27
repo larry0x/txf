@@ -1,10 +1,13 @@
 use cosmos_sdk_proto::cosmos::{
     bank::v1beta1 as bank,
     base::v1beta1::{Coin, DecCoin},
+    tx::v1beta1::BroadcastMode,
 };
 use hex_literal::hex;
 use k256::ecdsa;
 use txf::{OnlineParams, TxBuilder};
+
+const GRPC_URL: &str = "http://127.0.0.1:9090";
 
 // generated from seed phrase:
 //
@@ -18,7 +21,7 @@ const PRIVKEY_BYTES: [u8; 32] = hex!("0ce1c769b1acd36d6676ee065fe9c9ceda84e542c0
 async fn main() -> Result<()> {
     let privkey = ecdsa::SigningKey::from_bytes(&PRIVKEY_BYTES.into())?;
 
-    let _ = TxBuilder::new()
+    let res = TxBuilder::new()
         .add_message(bank::MsgSend {
             from_address: "cosmos1tqr9a9m9nk0c22uq2c2slundmqhtnrnhwks7x0".into(),
             to_address:   "cosmos1qskahqekuvwmyqgmusfdlg62eptczc4rd05mc2".into(),
@@ -35,11 +38,18 @@ async fn main() -> Result<()> {
         })
         .sign_online(OnlineParams {
             privkey:        &privkey,
-            grpc_url:       "http://127.0.0.1:9090".into(),
+            grpc_url:       GRPC_URL.into(),
             bech_prefix:    "cosmos".into(),
             gas_adjustment: 1.4,
         })
-        .await?;
+        .await?
+        .broadcast(GRPC_URL.into(), BroadcastMode::Sync)
+        .await?
+        .tx_response
+        .ok_or(Error::TxResponseMissing)?;
+
+    println!("Tx broadcasted!");
+    dbg!(res);
 
     Ok(())
 }
@@ -51,6 +61,9 @@ enum Error {
 
     #[error(transparent)]
     Txf(#[from] txf::Error),
+
+    #[error("tx response missing")]
+    TxResponseMissing,
 }
 
 type Result<T> = core::result::Result<T, Error>;

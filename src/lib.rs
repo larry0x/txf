@@ -11,7 +11,7 @@ use cosmos_sdk_proto::{
             signing::v1beta1::SignMode,
             v1beta1::{
                 self as tx, mode_info, AuthInfo, BroadcastTxResponse, Fee, ModeInfo, SignDoc,
-                SignerInfo, Tx, TxBody,
+                SignerInfo, Tx, TxBody, BroadcastMode,
             },
         },
     },
@@ -40,6 +40,7 @@ pub struct OfflineParams<'a> {
     pub gas_limit:      u64,
 }
 
+#[derive(Clone)]
 struct Credential {
     auth_info: AuthInfo,
     signature: Vec<u8>,
@@ -121,7 +122,7 @@ impl TxBuilder {
         account_number: u64,
     ) -> Result<Self> {
         let sign_doc = SignDoc {
-            body_bytes:      self.body_bytes()?,
+            body_bytes:      self.body().to_bytes()?,
             auth_info_bytes: auth_info.to_bytes()?,
             chain_id,
             account_number,
@@ -148,12 +149,26 @@ impl TxBuilder {
         }
     }
 
-    fn body_bytes(&self) -> Result<Vec<u8>> {
-        self.body().to_bytes().map_err(Into::into)
+    fn tx(&self) -> Result<Tx> {
+        let cred = self.credential.clone().ok_or(Error::Unsigned)?;
+
+        Ok(Tx {
+            body:       Some(self.body()),
+            auth_info:  Some(cred.auth_info),
+            signatures: vec![cred.signature],
+        })
     }
 
-    pub async fn broadcast(self) -> Result<BroadcastTxResponse> {
-        todo!();
+    pub async fn broadcast(self, grpc_url: String, mode: BroadcastMode) -> Result<BroadcastTxResponse> {
+        tx::service_client::ServiceClient::connect(grpc_url)
+            .await?
+            .broadcast_tx(tx::BroadcastTxRequest {
+                tx_bytes: self.tx()?.to_bytes()?,
+                mode:     mode.into(),
+            })
+            .await
+            .map(|res| res.into_inner())
+            .map_err(Into::into)
     }
 }
 
@@ -310,6 +325,9 @@ pub enum Error {
 
     #[error("node info missing in GetNodeInfoResponse")]
     NodeInfoMissing,
+
+    #[error("tx has not been signed yet")]
+    Unsigned,
 }
 
 type Result<T> = core::result::Result<T, Error>;

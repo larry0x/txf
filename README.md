@@ -2,23 +2,12 @@
 
 Transaction factory - a library facilitating the signing and broadcasting of transactions (txs) on [Cosmos SDK](https://github.com/cosmos/cosmos-sdk)-based blockchains.
 
-## Features
-
-- support two signing modes:
-  - online: the builder will query user account info onchain and simulate gas usage
-  - offline: the user must provide account info and gas limit
-- support two broadcasting modes:
-  - async: exit immediately once the tx has been sent out, do not wait for confirmation
-  - sync: wait for tx confirmation (may take a few blocks of time)
-- only support single signature (no multisig)
-- only support the DIRECT sign mode
-
 ## How to use
 
 Example with ONLINE signing mode and SYNC broadcast mode:
 
 ```rust
-use cosmos_sdk_proto::cosmos::{bank, staking};
+use cosmos_sdk_proto::cosmos::{bank, staking, tx::v1beta1::BroadcastMode};
 use txf::{OnlineParams, TxBuilder};
 
 let res = TxBuilder::new()
@@ -47,7 +36,7 @@ let res = TxBuilder::new()
         gas_adjustment: 1.4,
     })
     .await?
-    .broadcast_sync(grpc_url)
+    .broadcast(grpc_url, BroadcastMode::Sync)
     .await?;
 ```
 
