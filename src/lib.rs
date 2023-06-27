@@ -2,11 +2,17 @@ use bech32::{ToBase32, Variant};
 use cosmos_sdk_proto::{
     cosmos::{
         auth::v1beta1::{self as auth, BaseAccount},
-        base::v1beta1::{DecCoin, Coin},
+        base::{
+            tendermint::v1beta1 as tm,
+            v1beta1::{Coin, DecCoin},
+        },
         crypto::secp256k1,
         tx::{
             signing::v1beta1::SignMode,
-            v1beta1::{mode_info, AuthInfo, BroadcastTxResponse, ModeInfo, SignerInfo, TxBody, Fee, SignDoc},
+            v1beta1::{
+                self as tx, mode_info, AuthInfo, BroadcastTxResponse, Fee, ModeInfo, SignDoc,
+                SignerInfo, Tx, TxBody,
+            },
         },
     },
     prost::{DecodeError, EncodeError},
@@ -23,7 +29,7 @@ pub struct OnlineParams<'a> {
     pub privkey:        &'a ecdsa::SigningKey,
     pub grpc_url:       String,
     pub bech_prefix:    String,
-    pub gas_adjustment: u64,
+    pub gas_adjustment: f64,
 }
 
 pub struct OfflineParams<'a> {
@@ -54,13 +60,69 @@ impl TxBuilder {
         Ok(self)
     }
 
-    fn add_gas_price(mut self, gas_price: DecCoin) -> Self {
+    pub fn add_gas_price(mut self, gas_price: DecCoin) -> Self {
         self.gas_price = Some(gas_price);
         self
     }
 
     pub async fn sign_online(mut self, params: OnlineParams<'_>) -> Result<Self> {
-        todo!();
+        // 1. query account
+        let pubkey_bytes = derive_pubkey(params.privkey);
+        let address = derive_address(&pubkey_bytes, &params.bech_prefix)?;
+        let account = query_account(params.grpc_url.clone(), address).await?;
+
+        // 2. simulate gas usage
+        let gas_used = simulate_gas(params.grpc_url.clone(), self.body()).await?;
+        let gas_limit = gas_used as f64 * params.gas_adjustment;
+
+        let fee_amount = match self.gas_price.clone() {
+            Some(gas_price) => {
+                let gas_price_dec: f64 = gas_price.amount.parse()?;
+
+                let coin = Coin {
+                    denom:  gas_price.denom,
+                    amount: (gas_limit as f64 * gas_price_dec).floor().to_string(),
+                };
+
+                vec![coin]
+            },
+            None => vec![],
+        };
+
+        let auth_info = AuthInfo {
+            signer_infos: vec![
+                SignerInfo {
+                    public_key: account.pub_key.clone(),
+                    mode_info:  Some(ModeInfo {
+                        sum: Some(mode_info::Sum::Single(mode_info::Single {
+                            mode: SignMode::Direct.into(),
+                        })),
+                    }),
+                    sequence: account.sequence,
+                },
+            ],
+            fee: Some(Fee {
+                amount:    fee_amount,
+                gas_limit: gas_limit.floor() as u64,
+                payer:     "".into(),
+                granter:   "".into(),
+            }),
+            tip: None,
+        };
+
+        let sign_doc = SignDoc {
+            body_bytes:      self.body_bytes()?,
+            auth_info_bytes: auth_info.to_bytes()?,
+            chain_id:        query_chain_id(params.grpc_url.clone()).await?,
+            account_number:  account.account_number,
+        };
+
+        let sign_doc_bytes = sign_doc.to_bytes()?;
+        let signature: ecdsa::Signature = params.privkey.sign(&sign_doc_bytes);
+
+        self.signature = Some(signature.to_bytes().to_vec());
+
+        Ok(self)
     }
 
     pub fn sign_offline(mut self, params: OfflineParams) -> Result<Self> {
@@ -114,24 +176,69 @@ impl TxBuilder {
         let signature: ecdsa::Signature = params.privkey.sign(&sign_doc_bytes);
 
         self.signature = Some(signature.to_bytes().to_vec());
+
         Ok(self)
     }
 
-    fn body_bytes(&self) -> Result<Vec<u8>> {
-        let body = TxBody {
+    fn body(&self) -> TxBody {
+        TxBody {
             messages:                       self.msgs.clone(),
             memo:                           "".into(),
             timeout_height:                 0,
             extension_options:              vec![],
             non_critical_extension_options: vec![],
-        };
+        }
+    }
 
-        body.to_bytes().map_err(Into::into)
+    fn body_bytes(&self) -> Result<Vec<u8>> {
+        self.body().to_bytes().map_err(Into::into)
     }
 
     pub async fn broadcast(self) -> Result<BroadcastTxResponse> {
         todo!();
     }
+}
+
+async fn simulate_gas(grpc_url: String, body: TxBody) -> Result<u64> {
+    let sim_tx = Tx {
+        body:      Some(body),
+        auth_info: Some(AuthInfo {
+            signer_infos: vec![],
+            fee: Some(Fee {
+                amount:    vec![],
+                gas_limit: 30_000_000, // just pick a very big number
+                payer:     "".into(),
+                granter:   "".into(),
+            }),
+            tip: None,
+        }),
+        signatures: vec![]
+    };
+
+    tx::service_client::ServiceClient::connect(grpc_url)
+        .await?
+        .simulate(tx::SimulateRequest {
+            // yeah i know this is deprecated
+            #[allow(clippy::deprecated)]
+            tx: None,
+            tx_bytes: sim_tx.to_bytes()?,
+        })
+        .await?
+        .into_inner()
+        .gas_info
+        .ok_or(Error::GasInfoMissing)
+        .map(|gas_info| gas_info.gas_used)
+}
+
+async fn query_chain_id(grpc_url: String) -> Result<String> {
+    tm::service_client::ServiceClient::connect(grpc_url)
+        .await?
+        .get_node_info(tm::GetNodeInfoRequest {})
+        .await?
+        .into_inner()
+        .default_node_info
+        .ok_or(Error::NodeInfoMissing)
+        .map(|node_info| node_info.network)
 }
 
 async fn query_account(grpc_url: String, address: String) -> Result<BaseAccount> {
@@ -200,6 +307,12 @@ pub enum Error {
 
     #[error("gas price is not set")]
     GasPriceUnset,
+
+    #[error("gas info missing in SimulationResponse")]
+    GasInfoMissing,
+
+    #[error("node info missing in GetNodeInfoResponse")]
+    NodeInfoMissing,
 }
 
 type Result<T> = core::result::Result<T, Error>;
