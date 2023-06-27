@@ -40,11 +40,16 @@ pub struct OfflineParams<'a> {
     pub gas_limit:      u64,
 }
 
+struct Credential {
+    auth_info: AuthInfo,
+    signature: Vec<u8>,
+}
+
 #[derive(Default)]
 pub struct TxBuilder {
-    pub gas_price: Option<DecCoin>,
-    pub msgs:      Vec<Any>,
-    pub signature: Option<Vec<u8>>,
+    gas_price:  Option<DecCoin>,
+    msgs:       Vec<Any>,
+    credential: Option<Credential>,
 }
 
 impl TxBuilder {
@@ -66,6 +71,8 @@ impl TxBuilder {
     }
 
     pub async fn sign_online(self, params: OnlineParams<'_>) -> Result<Self> {
+        let chain_id = query_chain_id(params.grpc_url.clone()).await?;
+
         let pubkey_bytes = derive_pubkey(params.privkey);
         let address = derive_address(&pubkey_bytes, &params.bech_prefix)?;
         let account = query_account(params.grpc_url.clone(), address).await?;
@@ -85,20 +92,11 @@ impl TxBuilder {
             tip: None,
         };
 
-        let sign_doc = SignDoc {
-            body_bytes:      self.body_bytes()?,
-            auth_info_bytes: auth_info.to_bytes()?,
-            chain_id:        query_chain_id(params.grpc_url.clone()).await?,
-            account_number:  account.account_number,
-        };
-
-        self.sign(sign_doc, params.privkey)
+        self.sign(params.privkey, auth_info, chain_id, account.account_number)
     }
 
     pub fn sign_offline(self, params: OfflineParams) -> Result<Self> {
-        let pubkey = secp256k1::PubKey {
-            key: derive_pubkey(params.privkey),
-        };
+        let pubkey = secp256k1::PubKey { key: derive_pubkey(params.privkey) };
 
         let auth_info = AuthInfo {
             signer_infos: vec![
@@ -112,21 +110,30 @@ impl TxBuilder {
             tip: None,
         };
 
+        self.sign(params.privkey, auth_info, params.chain_id, params.account_number)
+    }
+
+    fn sign(
+        mut self,
+        privkey: &ecdsa::SigningKey,
+        auth_info: AuthInfo,
+        chain_id: String,
+        account_number: u64,
+    ) -> Result<Self> {
         let sign_doc = SignDoc {
             body_bytes:      self.body_bytes()?,
             auth_info_bytes: auth_info.to_bytes()?,
-            chain_id:        params.chain_id,
-            account_number:  params.account_number,
+            chain_id,
+            account_number,
         };
 
-        self.sign(sign_doc, params.privkey)
-    }
-
-    fn sign(mut self, sign_doc: SignDoc, privkey: &ecdsa::SigningKey) -> Result<Self> {
         let sign_doc_bytes = sign_doc.to_bytes()?;
         let signature: ecdsa::Signature = privkey.sign(&sign_doc_bytes);
 
-        self.signature = Some(signature.to_bytes().to_vec());
+        self.credential = Some(Credential {
+            auth_info,
+            signature: signature.to_bytes().to_vec(),
+        });
 
         Ok(self)
     }
@@ -352,7 +359,7 @@ mod tests {
 
         let privkey = mock_privkey();
 
-        let sig_bytes = TxBuilder::new()
+        let credential = TxBuilder::new()
             .add_message(bank::MsgSend {
                 from_address: ADDRESS.into(),
                 to_address:   "cosmos1qskahqekuvwmyqgmusfdlg62eptczc4rd05mc2".into(),
@@ -376,9 +383,9 @@ mod tests {
                 gas_limit:      123456,
             })
             .unwrap()
-            .signature
+            .credential
             .unwrap();
 
-        assert_eq!(base64::encode(sig_bytes), SIG_BYTES);
+        assert_eq!(base64::encode(credential.signature), SIG_BYTES);
     }
 }

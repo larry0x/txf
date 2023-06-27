@@ -18,7 +18,7 @@ const PRIVKEY_BYTES: [u8; 32] = hex!("0ce1c769b1acd36d6676ee065fe9c9ceda84e542c0
 async fn main() -> Result<()> {
     let privkey = ecdsa::SigningKey::from_bytes(&PRIVKEY_BYTES.into())?;
 
-    let builder = TxBuilder::new()
+    let _ = TxBuilder::new()
         .add_message(bank::MsgSend {
             from_address: "cosmos1tqr9a9m9nk0c22uq2c2slundmqhtnrnhwks7x0".into(),
             to_address:   "cosmos1qskahqekuvwmyqgmusfdlg62eptczc4rd05mc2".into(),
@@ -40,8 +40,6 @@ async fn main() -> Result<()> {
             gas_adjustment: 1.4,
         })
         .await?;
-
-    println!("signature: {:?}", builder.signature);
 
     Ok(())
 }
