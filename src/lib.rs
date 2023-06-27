@@ -73,21 +73,7 @@ impl TxBuilder {
 
         // 2. simulate gas usage
         let gas_used = simulate_gas(params.grpc_url.clone(), self.body(), &account).await?;
-        let gas_limit = gas_used as f64 * params.gas_adjustment;
-
-        let fee_amount = match self.gas_price.clone() {
-            Some(gas_price) => {
-                let gas_price_dec: f64 = gas_price.amount.parse()?;
-
-                let coin = Coin {
-                    denom:  gas_price.denom,
-                    amount: (gas_limit * gas_price_dec).floor().to_string(),
-                };
-
-                vec![coin]
-            },
-            None => vec![],
-        };
+        let gas_limit = (gas_used as f64 * params.gas_adjustment).floor() as u64;
 
         let auth_info = AuthInfo {
             signer_infos: vec![
@@ -102,8 +88,8 @@ impl TxBuilder {
                 },
             ],
             fee: Some(Fee {
-                amount:    fee_amount,
-                gas_limit: gas_limit.floor() as u64,
+                amount:    fee_amount(gas_limit, &self.gas_price)?,
+                gas_limit,
                 payer:     "".into(),
                 granter:   "".into(),
             }),
@@ -130,20 +116,6 @@ impl TxBuilder {
             key: derive_pubkey(params.privkey),
         };
 
-        let fee_amount = match self.gas_price.clone() {
-            Some(gas_price) => {
-                let gas_price_dec: f64 = gas_price.amount.parse()?;
-
-                let coin = Coin {
-                    denom:  gas_price.denom,
-                    amount: (params.gas_limit as f64 * gas_price_dec).floor().to_string(),
-                };
-
-                vec![coin]
-            },
-            None => vec![],
-        };
-
         let auth_info = AuthInfo {
             signer_infos: vec![
                 SignerInfo {
@@ -157,7 +129,7 @@ impl TxBuilder {
                 },
             ],
             fee: Some(Fee {
-                amount:    fee_amount,
+                amount:    fee_amount(params.gas_limit, &self.gas_price)?,
                 gas_limit: params.gas_limit,
                 payer:     "".into(),
                 granter:   "".into(),
@@ -267,6 +239,22 @@ async fn query_account(grpc_url: String, address: String) -> Result<BaseAccount>
         })?;
 
     BaseAccount::from_any(&any).map_err(Into::into)
+}
+
+fn fee_amount(gas_limit: u64, gas_price: &Option<DecCoin>) -> Result<Vec<Coin>> {
+    match gas_price {
+        Some(gas_price) => {
+            let gas_price_dec: f64 = gas_price.amount.parse()?;
+
+            let coin = Coin {
+                denom:  gas_price.denom.clone(),
+                amount: (gas_limit as f64 * gas_price_dec).floor().to_string(),
+            };
+
+            Ok(vec![coin])
+        },
+        None => Ok(vec![]),
+    }
 }
 
 fn derive_pubkey(privkey: &ecdsa::SigningKey) -> Vec<u8> {
