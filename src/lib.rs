@@ -134,6 +134,22 @@ impl TxBuilder {
     }
 }
 
+async fn query_account(grpc_url: String, address: String) -> Result<BaseAccount> {
+    let any = auth::query_client::QueryClient::connect(grpc_url)
+        .await?
+        .account(auth::QueryAccountRequest {
+            address: address.clone(),
+        })
+        .await?
+        .into_inner()
+        .account
+        .ok_or_else(|| Error::AccountNotFound {
+            address,
+        })?;
+
+    BaseAccount::from_any(&any).map_err(Into::into)
+}
+
 fn derive_pubkey(privkey: &ecdsa::SigningKey) -> Vec<u8> {
     VerifyingKey::from(privkey)
         .to_encoded_point(true)
@@ -157,32 +173,6 @@ fn ripemd160(bytes: &[u8]) -> Vec<u8> {
     let mut hasher = Ripemd160::new();
     hasher.update(bytes);
     hasher.finalize().to_vec()
-}
-
-struct AccountInfo {
-    pub account_number: u64,
-    pub sequence:       u64,
-}
-
-async fn query_account(grpc_url: String, address: String) -> Result<AccountInfo> {
-    let any = auth::query_client::QueryClient::connect(grpc_url)
-        .await?
-        .account(auth::QueryAccountRequest {
-            address: address.clone(),
-        })
-        .await?
-        .into_inner()
-        .account
-        .ok_or_else(|| Error::AccountNotFound {
-            address,
-        })?;
-
-    BaseAccount::from_any(&any)
-        .map(|acc| AccountInfo {
-            account_number: acc.account_number,
-            sequence:       acc.sequence,
-        })
-        .map_err(Into::into)
 }
 
 #[derive(Debug, thiserror::Error)]
