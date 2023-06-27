@@ -79,12 +79,8 @@ impl TxBuilder {
             signer_infos: vec![
                 SignerInfo {
                     public_key: account.pub_key.clone(),
-                    mode_info:  Some(ModeInfo {
-                        sum: Some(mode_info::Sum::Single(mode_info::Single {
-                            mode: SignMode::Direct.into(),
-                        })),
-                    }),
-                    sequence: account.sequence,
+                    mode_info:  Some(mode_info(SignMode::Direct)),
+                    sequence:   account.sequence,
                 },
             ],
             fee: Some(Fee {
@@ -120,12 +116,8 @@ impl TxBuilder {
             signer_infos: vec![
                 SignerInfo {
                     public_key: Some(pubkey.to_any()?),
-                    mode_info:  Some(ModeInfo {
-                        sum: Some(mode_info::Sum::Single(mode_info::Single {
-                            mode: SignMode::Direct.into(),
-                        })),
-                    }),
-                    sequence: params.sequence,
+                    mode_info:  Some(mode_info(SignMode::Direct)),
+                    sequence:   params.sequence,
                 },
             ],
             fee: Some(Fee {
@@ -178,12 +170,8 @@ async fn simulate_gas(grpc_url: String, body: TxBody, account: &BaseAccount) -> 
             signer_infos: vec![
                 SignerInfo {
                     public_key: account.pub_key.clone(),
-                    mode_info: Some(ModeInfo {
-                        sum: Some(mode_info::Sum::Single(mode_info::Single {
-                            mode: SignMode::Unspecified.into(),
-                        })),
-                    }),
-                    sequence: account.sequence,
+                    mode_info:  Some(mode_info(SignMode::Unspecified)),
+                    sequence:   account.sequence,
                 },
             ],
             fee: Some(Fee {
@@ -254,6 +242,14 @@ fn fee_amount(gas_limit: u64, gas_price: &Option<DecCoin>) -> Result<Vec<Coin>> 
             Ok(vec![coin])
         },
         None => Ok(vec![]),
+    }
+}
+
+fn mode_info(mode: SignMode) -> ModeInfo {
+    ModeInfo {
+        sum: Some(mode_info::Sum::Single(mode_info::Single {
+            mode: mode.into(),
+        })),
     }
 }
 
