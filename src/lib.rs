@@ -19,45 +19,31 @@ use k256::{
 };
 use ripemd::Ripemd160;
 
-#[derive(Clone)]
-pub enum BuilderParams {
-    /// Online signing mode - the builder will query the chain-id and signer
-    /// account info via gRPC, and simulate the gas consumption.
-    Online {
-        grpc_url:       String,
-        bech_prefix:    String,
-        gas_adjustment: u64,
-    },
-    /// Offline signing mode - the user must provide the chain-id, signer
-    /// account info, and gas limit.
-    Offline {
-        chain_id:       String,
-        account_number: u64,
-        sequence:       u64,
-        gas_limit:      u64,
-    },
+pub struct OnlineParams<'a> {
+    pub privkey:        &'a ecdsa::SigningKey,
+    pub grpc_url:       String,
+    pub bech_prefix:    String,
+    pub gas_adjustment: u64,
 }
 
+pub struct OfflineParams<'a> {
+    pub privkey:        &'a ecdsa::SigningKey,
+    pub chain_id:       String,
+    pub account_number: u64,
+    pub sequence:       u64,
+    pub gas_limit:      u64,
+}
+
+#[derive(Default)]
 pub struct TxBuilder {
-    pub params:    BuilderParams,
     pub gas_price: Option<DecCoin>,
     pub msgs:      Vec<Any>,
-    pub signature: Option<ecdsa::Signature>,
+    pub signature: Option<Vec<u8>>,
 }
 
 impl TxBuilder {
-    pub fn new(params: BuilderParams) -> Self {
-        Self {
-            params,
-            gas_price: None,
-            msgs:      vec![],
-            signature: None,
-        }
-    }
-
-    pub fn with_gas_price(mut self, gas_price: DecCoin) -> Self {
-        self.gas_price = Some(gas_price);
-        self
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn add_message<M>(mut self, msg: M) -> Result<Self>
@@ -68,51 +54,32 @@ impl TxBuilder {
         Ok(self)
     }
 
-    pub async fn sign(mut self, privkey: &ecdsa::SigningKey) -> Result<Self> {
-        let gas_price = self
-            .gas_price
-            .clone()
-            .ok_or(Error::GasPriceUnset)?;
-
-        match self.params.clone() {
-            BuilderParams::Online {
-                grpc_url,
-                bech_prefix,
-                gas_adjustment,
-            } => self.sign_online(privkey, grpc_url, bech_prefix, gas_adjustment, gas_price).await,
-            BuilderParams::Offline {
-                chain_id,
-                account_number,
-                sequence,
-                gas_limit,
-            } => self.sign_offline(privkey, chain_id, account_number, sequence, gas_limit, gas_price),
-        }
+    fn with_gas_price(mut self, gas_price: DecCoin) -> Self {
+        self.gas_price = Some(gas_price);
+        self
     }
 
-    async fn sign_online(
-        mut self,
-        privkey:        &ecdsa::SigningKey,
-        grpc_url:       String,
-        bech_prefix:    String,
-        gas_adjustment: u64,
-        gas_price:      DecCoin,
-    ) -> Result<Self> {
+    pub async fn sign_online(mut self, params: OnlineParams<'_>) -> Result<Self> {
         todo!();
     }
 
-    fn sign_offline(
-        mut self,
-        privkey:        &ecdsa::SigningKey,
-        chain_id:       String,
-        account_number: u64,
-        sequence:       u64,
-        gas_limit:      u64,
-        gas_price:      DecCoin,
-    ) -> Result<Self> {
-        let gas_price_dec: f64 = gas_price.amount.parse()?;
-
+    pub fn sign_offline(mut self, params: OfflineParams) -> Result<Self> {
         let pubkey = secp256k1::PubKey {
-            key: derive_pubkey(privkey),
+            key: derive_pubkey(params.privkey),
+        };
+
+        let fee_amount = match self.gas_price.clone() {
+            Some(gas_price) => {
+                let gas_price_dec: f64 = gas_price.amount.parse()?;
+
+                let coin = Coin {
+                    denom:  gas_price.denom,
+                    amount: (params.gas_limit as f64 * gas_price_dec).floor().to_string(),
+                };
+
+                vec![coin]
+            },
+            None => vec![],
         };
 
         let auth_info = AuthInfo {
@@ -124,19 +91,14 @@ impl TxBuilder {
                             mode: SignMode::Direct.into(),
                         })),
                     }),
-                    sequence,
+                    sequence: params.sequence,
                 },
             ],
             fee: Some(Fee {
-                amount: vec![
-                    Coin {
-                        denom:  gas_price.denom,
-                        amount: (gas_limit as f64 * gas_price_dec).floor().to_string(),
-                    },
-                ],
-                gas_limit,
-                payer:   "".into(),
-                granter: "".into(),
+                amount:    fee_amount,
+                gas_limit: params.gas_limit,
+                payer:     "".into(),
+                granter:   "".into(),
             }),
             tip: None,
         };
@@ -144,13 +106,14 @@ impl TxBuilder {
         let sign_doc = SignDoc {
             body_bytes:      self.body_bytes()?,
             auth_info_bytes: auth_info.to_bytes()?,
-            chain_id,
-            account_number,
+            chain_id:        params.chain_id,
+            account_number:  params.account_number,
         };
 
         let sign_doc_bytes = sign_doc.to_bytes()?;
+        let signature: ecdsa::Signature = params.privkey.sign(&sign_doc_bytes);
 
-        self.signature = Some(privkey.sign(&sign_doc_bytes));
+        self.signature = Some(signature.to_bytes().to_vec());
         Ok(self)
     }
 
@@ -286,41 +249,42 @@ mod tests {
         assert_eq!(address, ADDRESS);
     }
 
-    #[tokio::test]
-    async fn signing_offline() {
+    #[test]
+    fn signing_offline() {
         // the correct signature, generated by:
         //
         // simd tx bank send $from $to 123456utoken --generate-only --output document tx.json
         // simd tx sign tx.json --from $from --offline --chain-id dev-1 --sequence 13 --account-number 0
         const SIG_BYTES: &str = "sTPWXiJYpNYE01j6Hp/YuSRu/WfoRvCXl9XB0/Us4RZm8K0GLAjCp5S+mTmEq1woyi3hstCvyljv254HIt/t3g==";
 
-        let sig_bytes = TxBuilder::new(BuilderParams::Offline {
-            chain_id:       "dev-1".into(),
-            account_number: 0,
-            sequence:       13,
-            gas_limit:      123456,
-        })
-        .with_gas_price(DecCoin {
-            denom:  "utoken".into(),
-            amount: "0.0025".into(),
-        })
-        .add_message(bank::MsgSend {
-            from_address: ADDRESS.into(),
-            to_address:   "cosmos1qskahqekuvwmyqgmusfdlg62eptczc4rd05mc2".into(),
-            amount: vec![
-                Coin {
-                    denom:  "utoken".into(),
-                    amount: "12345".into(),
-                },
-            ],
-        })
-        .unwrap()
-        .sign(&mock_privkey())
-        .await
-        .unwrap()
-        .signature
-        .unwrap()
-        .to_bytes();
+        let privkey = mock_privkey();
+
+        let sig_bytes = TxBuilder::new()
+            .add_message(bank::MsgSend {
+                from_address: ADDRESS.into(),
+                to_address:   "cosmos1qskahqekuvwmyqgmusfdlg62eptczc4rd05mc2".into(),
+                amount: vec![
+                    Coin {
+                        denom:  "utoken".into(),
+                        amount: "12345".into(),
+                    },
+                ],
+            })
+            .unwrap()
+            .with_gas_price(DecCoin {
+                denom:  "utoken".into(),
+                amount: "0.0025".into(),
+            })
+            .sign_offline(OfflineParams {
+                privkey:        &privkey,
+                chain_id:       "dev-1".into(),
+                account_number: 0,
+                sequence:       13,
+                gas_limit:      123456,
+            })
+            .unwrap()
+            .signature
+            .unwrap();
 
         assert_eq!(base64::encode(sig_bytes), SIG_BYTES);
     }
