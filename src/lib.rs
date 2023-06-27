@@ -65,7 +65,7 @@ impl TxBuilder {
         self
     }
 
-    pub async fn sign_online(mut self, params: OnlineParams<'_>) -> Result<Self> {
+    pub async fn sign_online(self, params: OnlineParams<'_>) -> Result<Self> {
         // 1. query account
         let pubkey_bytes = derive_pubkey(params.privkey);
         let address = derive_address(&pubkey_bytes, &params.bech_prefix)?;
@@ -94,15 +94,10 @@ impl TxBuilder {
             account_number:  account.account_number,
         };
 
-        let sign_doc_bytes = sign_doc.to_bytes()?;
-        let signature: ecdsa::Signature = params.privkey.sign(&sign_doc_bytes);
-
-        self.signature = Some(signature.to_bytes().to_vec());
-
-        Ok(self)
+        self.sign(sign_doc, params.privkey)
     }
 
-    pub fn sign_offline(mut self, params: OfflineParams) -> Result<Self> {
+    pub fn sign_offline(self, params: OfflineParams) -> Result<Self> {
         let pubkey = secp256k1::PubKey {
             key: derive_pubkey(params.privkey),
         };
@@ -126,8 +121,12 @@ impl TxBuilder {
             account_number:  params.account_number,
         };
 
+        self.sign(sign_doc, params.privkey)
+    }
+
+    fn sign(mut self, sign_doc: SignDoc, privkey: &ecdsa::SigningKey) -> Result<Self> {
         let sign_doc_bytes = sign_doc.to_bytes()?;
-        let signature: ecdsa::Signature = params.privkey.sign(&sign_doc_bytes);
+        let signature: ecdsa::Signature = privkey.sign(&sign_doc_bytes);
 
         self.signature = Some(signature.to_bytes().to_vec());
 
