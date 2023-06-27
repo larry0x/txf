@@ -72,7 +72,7 @@ impl TxBuilder {
         let account = query_account(params.grpc_url.clone(), address).await?;
 
         // 2. simulate gas usage
-        let gas_used = simulate_gas(params.grpc_url.clone(), self.body()).await?;
+        let gas_used = simulate_gas(params.grpc_url.clone(), self.body(), &account).await?;
         let gas_limit = gas_used as f64 * params.gas_adjustment;
 
         let fee_amount = match self.gas_price.clone() {
@@ -199,20 +199,30 @@ impl TxBuilder {
     }
 }
 
-async fn simulate_gas(grpc_url: String, body: TxBody) -> Result<u64> {
+async fn simulate_gas(grpc_url: String, body: TxBody, account: &BaseAccount) -> Result<u64> {
     let sim_tx = Tx {
         body:      Some(body),
         auth_info: Some(AuthInfo {
-            signer_infos: vec![],
+            signer_infos: vec![
+                SignerInfo {
+                    public_key: account.pub_key.clone(),
+                    mode_info: Some(ModeInfo {
+                        sum: Some(mode_info::Sum::Single(mode_info::Single {
+                            mode: SignMode::Unspecified.into(),
+                        })),
+                    }),
+                    sequence: account.sequence,
+                },
+            ],
             fee: Some(Fee {
                 amount:    vec![],
-                gas_limit: 30_000_000, // just pick a very big number
+                gas_limit: 0,
                 payer:     "".into(),
                 granter:   "".into(),
             }),
             tip: None,
         }),
-        signatures: vec![]
+        signatures: vec![vec![]],
     };
 
     tx::service_client::ServiceClient::connect(grpc_url)

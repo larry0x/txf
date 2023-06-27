@@ -1,4 +1,7 @@
-use cosmos_sdk_proto::cosmos::{bank::v1beta1 as bank, base::v1beta1::{Coin, DecCoin}};
+use cosmos_sdk_proto::cosmos::{
+    bank::v1beta1 as bank,
+    base::v1beta1::{Coin, DecCoin},
+};
 use hex_literal::hex;
 use k256::ecdsa;
 use txf::{OnlineParams, TxBuilder};
