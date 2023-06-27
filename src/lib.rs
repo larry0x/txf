@@ -66,12 +66,10 @@ impl TxBuilder {
     }
 
     pub async fn sign_online(self, params: OnlineParams<'_>) -> Result<Self> {
-        // 1. query account
         let pubkey_bytes = derive_pubkey(params.privkey);
         let address = derive_address(&pubkey_bytes, &params.bech_prefix)?;
         let account = query_account(params.grpc_url.clone(), address).await?;
 
-        // 2. simulate gas usage
         let gas_used = simulate_gas(params.grpc_url.clone(), self.body(), &account).await?;
         let gas_limit = (gas_used as f64 * params.gas_adjustment).floor() as u64;
 
