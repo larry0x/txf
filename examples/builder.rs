@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
                 },
             ],
         })?
-        .add_gas_price(DecCoin {
+        .set_gas_price(DecCoin {
             denom:  "utoken".into(),
             amount: "0.0025".into(),
         })

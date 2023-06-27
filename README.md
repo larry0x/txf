@@ -7,7 +7,12 @@ Transaction factory - a library facilitating the signing and broadcasting of tra
 Example with ONLINE signing mode and SYNC broadcast mode:
 
 ```rust
-use cosmos_sdk_proto::cosmos::{bank, staking, tx::v1beta1::BroadcastMode};
+use cosmos_sdk_proto::cosmos::{
+    bank,
+    base::v1beta1::{Coin, DecCoin},
+    staking,
+    tx::v1beta1::BroadcastMode,
+};
 use txf::{OnlineParams, TxBuilder};
 
 let res = TxBuilder::new()
@@ -29,6 +34,10 @@ let res = TxBuilder::new()
             amount: "...",
         },
     })?
+    .set_gas_price(DecCoin {
+        denom:  "uosmo".into()
+        amount: "0.0025".into(),
+    })
     .sign_online(OnlineParams {
         privkey:        &privkey,
         grpc_url:       grpc_url.clone(),

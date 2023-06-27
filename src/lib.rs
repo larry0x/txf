@@ -66,7 +66,7 @@ impl TxBuilder {
         Ok(self)
     }
 
-    pub fn add_gas_price(mut self, gas_price: DecCoin) -> Self {
+    pub fn set_gas_price(mut self, gas_price: DecCoin) -> Self {
         self.gas_price = Some(gas_price);
         self
     }
@@ -389,7 +389,7 @@ mod tests {
                 ],
             })
             .unwrap()
-            .add_gas_price(DecCoin {
+            .set_gas_price(DecCoin {
                 denom:  "utoken".into(),
                 amount: "0.0025".into(),
             })
