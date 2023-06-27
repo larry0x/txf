@@ -49,6 +49,6 @@ let res = TxBuilder::new()
     .await?;
 ```
 
-## Copyright
+## License
 
-(c) larry0x, 2023 - [All rights reserved](./License).
+Either [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) or [MIT](https://opensource.org/license/mit/) license, at your choice.
