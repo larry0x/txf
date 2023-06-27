@@ -83,12 +83,7 @@ impl TxBuilder {
                     sequence:   account.sequence,
                 },
             ],
-            fee: Some(Fee {
-                amount:    fee_amount(gas_limit, &self.gas_price)?,
-                gas_limit,
-                payer:     "".into(),
-                granter:   "".into(),
-            }),
+            fee: Some(fee(gas_limit, &self.gas_price)?),
             tip: None,
         };
 
@@ -120,12 +115,7 @@ impl TxBuilder {
                     sequence:   params.sequence,
                 },
             ],
-            fee: Some(Fee {
-                amount:    fee_amount(params.gas_limit, &self.gas_price)?,
-                gas_limit: params.gas_limit,
-                payer:     "".into(),
-                granter:   "".into(),
-            }),
+            fee: Some(fee(params.gas_limit, &self.gas_price)?),
             tip: None,
         };
 
@@ -229,8 +219,8 @@ async fn query_account(grpc_url: String, address: String) -> Result<BaseAccount>
     BaseAccount::from_any(&any).map_err(Into::into)
 }
 
-fn fee_amount(gas_limit: u64, gas_price: &Option<DecCoin>) -> Result<Vec<Coin>> {
-    match gas_price {
+fn fee(gas_limit: u64, gas_price: &Option<DecCoin>) -> Result<Fee> {
+    let amount = match gas_price {
         Some(gas_price) => {
             let gas_price_dec: f64 = gas_price.amount.parse()?;
 
@@ -239,10 +229,17 @@ fn fee_amount(gas_limit: u64, gas_price: &Option<DecCoin>) -> Result<Vec<Coin>> 
                 amount: (gas_limit as f64 * gas_price_dec).floor().to_string(),
             };
 
-            Ok(vec![coin])
+            vec![coin]
         },
-        None => Ok(vec![]),
-    }
+        None => vec![],
+    };
+
+    Ok(Fee {
+        amount,
+        gas_limit,
+        payer:   "".into(),
+        granter: "".into(),
+    })
 }
 
 fn mode_info(mode: SignMode) -> ModeInfo {
