@@ -65,6 +65,17 @@ impl TxBuilder {
         self.msgs.push(msg.to_any()?);
         Ok(self)
     }
+                
+    pub fn add_messages<M>(mut self, msgs: Vec<M>) -> Result<Self>
+    where
+        M: MessageExt + TypeUrl + 'static,
+    {
+        for msg in msgs.iter() {
+            self.msgs.push(msg.to_any()?);
+        }
+
+        Ok(self)
+    }
 
     pub fn set_gas_price(mut self, gas_price: DecCoin) -> Self {
         self.gas_price = Some(gas_price);
