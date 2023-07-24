@@ -70,7 +70,7 @@ impl TxBuilder {
     where
         M: MessageExt + TypeUrl + 'static,
     {
-        for msg in msgs.iter() {
+        for msg in msgs {
             self.msgs.push(msg.to_any()?);
         }
 
