@@ -65,7 +65,7 @@ impl TxBuilder {
         self.msgs.push(msg.to_any()?);
         Ok(self)
     }
-                
+
     pub fn add_messages<M>(mut self, msgs: Vec<M>) -> Result<Self>
     where
         M: MessageExt + TypeUrl + 'static,
