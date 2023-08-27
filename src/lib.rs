@@ -1,29 +1,31 @@
-use bech32::{ToBase32, Variant};
-use cosmos_sdk_proto::{
-    cosmos::{
-        auth::v1beta1::{self as auth, BaseAccount},
-        base::{
-            tendermint::v1beta1 as tm,
-            v1beta1::{Coin, DecCoin},
-        },
-        crypto::secp256k1,
-        tx::{
-            signing::v1beta1::SignMode,
-            v1beta1::{
-                self as tx, mode_info, AuthInfo, BroadcastTxResponse, Fee, ModeInfo, SignDoc,
-                SignerInfo, Tx, TxBody, BroadcastMode,
+use {
+    bech32::{ToBase32, Variant},
+    cosmos_sdk_proto::{
+        cosmos::{
+            auth::v1beta1::{self as auth, BaseAccount},
+            base::{
+                tendermint::v1beta1 as tm,
+                v1beta1::{Coin, DecCoin},
+            },
+            crypto::secp256k1,
+            tx::{
+                signing::v1beta1::SignMode,
+                v1beta1::{
+                    self as tx, mode_info, AuthInfo, BroadcastMode, BroadcastTxResponse, Fee,
+                    ModeInfo, SignDoc, SignerInfo, Tx, TxBody,
+                },
             },
         },
+        prost::{DecodeError, EncodeError},
+        traits::{MessageExt, TypeUrl},
+        Any,
     },
-    prost::{DecodeError, EncodeError},
-    traits::{MessageExt, TypeUrl},
-    Any,
+    k256::{
+        ecdsa::{self, signature::Signer, VerifyingKey},
+        sha2::{Digest, Sha256},
+    },
+    ripemd::Ripemd160,
 };
-use k256::{
-    ecdsa::{self, signature::Signer, VerifyingKey},
-    sha2::{Digest, Sha256},
-};
-use ripemd::Ripemd160;
 
 pub struct OnlineParams<'a> {
     pub privkey:        &'a ecdsa::SigningKey,
