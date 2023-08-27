@@ -1,11 +1,13 @@
-use cosmos_sdk_proto::cosmos::{
-    bank::v1beta1 as bank,
-    base::v1beta1::{Coin, DecCoin},
-    tx::v1beta1::BroadcastMode,
+use {
+    cosmos_sdk_proto::cosmos::{
+        bank::v1beta1 as bank,
+        base::v1beta1::{Coin, DecCoin},
+        tx::v1beta1::BroadcastMode,
+    },
+    hex_literal::hex,
+    k256::ecdsa,
+    txf::{OnlineParams, TxBuilder},
 };
-use hex_literal::hex;
-use k256::ecdsa;
-use txf::{OnlineParams, TxBuilder};
 
 const GRPC_URL: &str = "http://127.0.0.1:9090";
 
